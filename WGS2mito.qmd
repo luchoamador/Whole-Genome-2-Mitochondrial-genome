@@ -1,0 +1,96 @@
+---
+title: "Whole_genome_2_mito_genome"
+author: "Luis Amador"
+date: "2026-10-07"
+format: html
+editor: visual
+---
+
+## Overview
+
+Cells contain hundreds to thousands of mitochondria, whole genome libraries naturally capture mitochondrial DNA (mtDNA) at a higher depth. Here I will show how to efficiently extract and assemble complete mitochondrial genomes from whole-genome sequencing (WGS) data.
+
+## Procedure
+
+The first step is looking for our target species genome in the NCBI dataset <https://www.ncbi.nlm.nih.gov/datasets/genome/>, after that we select the assembly of our preference and then we access to the **BioProject** information by clicking in the BioProject associated number (generally starts with PRJNA). It will open a window with the genome metadata information and links to these datasets.
+
+In the next step, we need to collect the number of the SRA (Sequence Read Archive) experiment, by clicking on 'SRA' under *Related Information* or by clicking in the number next to 'SRA Experiments' under *Project Data*.
+
+Once the SRA number has been obtained we can download the raw reads (SRA) using the SRA Toolkit. We can install the toolkit using conda:
+
+``` bash
+conda install -c bioconda sra-tools
+```
+
+Once SRA Toolkit is installed, we use the following command line:
+
+``` bash
+prefetch SRR5985818 --max-size 30G
+```
+
+`prefetch` is a tool that downloads the raw SRA accession data (SRR5985818) files from NCBI.
+
+`--max-size` is a limit flag, by default, `prefetch` has a maximum file size limit (\~ 20 Gigabytes). This flag increases the limit, telling the software, "allow downloads up to 30 Gigabytes (30G) in size".
+
+Our next step is to unpack and convert the SRA file into standard FASTQ format using the `fasterq-dump` from the SRA Toolkit. Because Illumina WGS data for whole genomes is paired-end, we split it into forward and reverse reads.
+
+``` bash
+fasterq-dump --split-files SRR5985818.sra
+```
+
+This code will output two files: SRR5985818_1.fastq and SRR5985818_2.fastq. These Raw FASTQ files from WGS data are massive. It is recommendable to compress them into .gz format.
+
+``` bash
+gzip SRR5985818_1.fastq
+gzip SRR5985818_2.fastq
+```
+
+## Using GetOrganelle
+
+[GetOrganelle](https://github.com/kinggerm/getorganelle) recruits mitochondrial reads from FASTQ files and assembles them using [SPAdes](https://github.com/ablab/spades) Genome Assembler. We can install it via Conda:
+
+``` bash
+conda install -c bioconda getorganelle
+```
+
+We need to configure the program to target animal mitochondrial databases. For example:
+
+``` bash
+get_organelle_config.py --add animal_mt,fungus_mt
+```
+
+Here we include fungus mitochondrial databases too.
+
+Running the assembly command with the `get_organelle_from_reads.py` program. The options are:
+
+-1 Input file with forward reads
+
+-2 Input file with reverse reads
+
+-o Output directory
+
+-F Target organelle genome type
+
+-s Input FASTA format file as initial seed
+
+-t Maximum threads to use
+
+``` bash
+ get_organelle_from_reads.py \            
+-1 SRR5985818/SRR5985818_1.fastq.gz \
+-2 SRR5985818/SRR5985818_2.fastq.gz \
+-o msf_mitogenome \
+-F animal_mt \
+-s Micropterus_salmoides_mt_ref.fa \
+-t 8
+```
+
+GetOrganelle will target, **bait**, **extend**, and **assemble** the circular mitogenome contig, outputting a clean FASTA file.
+
+**Bait** reads from the FASTQ files matching the animal mitochondrial database and custom seed.
+
+**Extend** those reads iteratively.
+
+**Assemble** them into a clean, circularized mitochondrial contig.
+
+Once the program finished run, the mitogenome in FASTA format will be located in the output directory with a 'complete.graph1.1.path_sequence.fasta' in the file name.
